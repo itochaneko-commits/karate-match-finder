@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- build:2026-09-13-2 -->
+<!-- build:2026-09-13-3 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -274,7 +274,7 @@
 <script>
 const COMP_ID = 50;
 const BASE = "https://karate-network.com";
-const BUILD_ID = "2026-09-13-2";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
+const BUILD_ID = "2026-09-13-3";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -346,10 +346,22 @@ async function loadAll(){
   render();
 }
 
+// 429（レート制限）やエラーが続いたら自動的に間隔を伸ばし、復旧したら元に戻す。
+// 大会当日にAPI側が混雑した場合でも、こちらから叩き続けて悪化させないための安全弁。
+let refreshBackoffMult = 1;
+const REFRESH_BACKOFF_MAX = 4;
+
 async function refreshMatches(){
   $("#statusText").textContent = "コート進行を更新中…";
   try{
-    const mp = await fetch(`${BASE}/api/public/competitions/${COMP_ID}/match-progress`).then(r => r.ok ? r.json() : Promise.reject(r.status));
+    const res = await fetch(`${BASE}/api/public/competitions/${COMP_ID}/match-progress`);
+    if (res.status === 429){
+      refreshBackoffMult = Math.min(REFRESH_BACKOFF_MAX, refreshBackoffMult * 2);
+      throw new Error("rate limited (429)");
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    const mp = await res.json();
+    refreshBackoffMult = 1;
     applyMatchProgress(mp);
     if (!state.entries.length) buildIndex(null, mp);  // roster is static during the event; only matches change
     state.pmCache.clear();
@@ -859,10 +871,25 @@ $("#updateBtn").onclick = () => {
 renderHint();
 
 loadAll();
-setInterval(() => { if (!document.hidden) refreshMatches(); }, 30000);
+
+// 自動更新のスケジューラ: 基本30秒 + ランダムなばらつき(±3秒) + 失敗時のバックオフ。
+// 全端末が同じ瞬間に一斉アクセスするのを避けつつ、API側が混雑してもこちらから叩き続けない。
+const REFRESH_BASE_MS = 30000;
+let refreshTimer = null;
+function scheduleRefresh(){
+  clearTimeout(refreshTimer);
+  const jitter = Math.random() * 6000 - 3000;
+  const delay = Math.max(5000, REFRESH_BASE_MS * refreshBackoffMult + jitter);
+  refreshTimer = setTimeout(async () => {
+    if (!document.hidden) await refreshMatches();
+    scheduleRefresh();
+  }, delay);
+}
+scheduleRefresh();
+
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
-  if (state.lastMatchLoad && Date.now() - state.lastMatchLoad > 30000) refreshMatches();
+  if (state.lastMatchLoad && Date.now() - state.lastMatchLoad > REFRESH_BASE_MS) refreshMatches();
   checkForUpdate();  // ホーム画面アイコンから復帰した時など、開き直すたびに新版が出ていないか確認
 });
 setTimeout(checkForUpdate, 15000);
