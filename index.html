@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- build:2026-09-13-1 -->
+<!-- build:2026-09-13-2 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -130,20 +130,14 @@
   .divlist{display:flex;flex-direction:column;gap:8px;margin-top:12px}
   .div-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
     background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;
-    cursor:pointer;font-family:var(--jp);box-shadow:var(--shadow)}
+    cursor:pointer;font-family:var(--jp);box-shadow:var(--shadow);text-decoration:none;color:inherit}
   .div-row:active{border-color:var(--accent)}
   .div-row-name{flex:1;font-size:13.5px;color:var(--ink);line-height:1.4;min-width:0}
   .div-row-meta{flex:none;font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right;white-space:nowrap}
-  .back-btn{display:inline-block;font-family:var(--jp);font-size:12.5px;color:var(--accent-ink);
-    background:none;border:0;padding:4px 0 10px;cursor:pointer;font-weight:700}
-  .tour-card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
-    padding:26px 20px;display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;margin-top:2px}
-  .tour-card-meta{font-size:13px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .tour-btn{display:inline-flex;align-items:center;gap:6px;font-family:var(--jp);font-weight:700;font-size:15px;
-    color:#fff;background:var(--accent);border-radius:12px;padding:14px 28px;text-decoration:none;
-    box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 35%,transparent)}
-  .tour-btn:active{opacity:.85}
-  .tour-empty-note{font-size:13px;color:var(--muted);margin:4px 0}
+  .div-row.div-row-disabled{cursor:default;opacity:.55;box-shadow:none}
+  .div-row.div-row-disabled:active{border-color:var(--line)}
+  .div-row-note{flex:none;font-size:10.5px;color:var(--muted);background:var(--paper);
+    border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px}
   .clublist button .c{color:var(--muted);font-family:var(--mono);font-size:11px;margin-left:5px}
 
   .status-line{display:flex;align-items:center;gap:8px;margin:14px 2px 2px;font-size:12px;color:var(--muted);
@@ -280,7 +274,7 @@
 <script>
 const COMP_ID = 50;
 const BASE = "https://karate-network.com";
-const BUILD_ID = "2026-09-13-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
+const BUILD_ID = "2026-09-13-2";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -298,7 +292,6 @@ const state = {
   orgs: [],              // [{label, people, nk}]  -- 流派・団体（organization）
   divisions: [],         // [{id, name, cat, sortOrder, entrants, tourId, tourSize, nk}]
   tourCat: "all",        // "all" | "kumite" | "kata"
-  tourSelectedDiv: null,
 };
 
 /* ---------- text helpers ---------- */
@@ -669,12 +662,10 @@ function render(){
 }
 
 /* ---------- tour (階級・型/組手) mode ---------- */
+// 階級を選んだら（トーナメント表がある限り）karate-network 公式のトーナメント表へ直接遷移する。
+// アプリ側に中間画面は挟まない。
 function renderTourView(q){
   const out = $("#out");
-  if (state.tourSelectedDiv != null){
-    renderTourDetail(state.tourSelectedDiv);
-    return;
-  }
   if (!state.divisions.length){
     out.innerHTML = state.entries.length
       ? `<div class="msg">階級一覧を取得できませんでした（大会情報の読み込みに失敗した可能性があります）。</div>`
@@ -699,12 +690,16 @@ function tourListHTML(list, filtered){
     return `<div class="empty"><h2>該当する階級が見つかりません</h2>
       <div>キーワードを変えて試してください（例：中学生、軽量級、女子、上級）。</div></div>`;
   }
-  const rows = list.map(d => `
-    <button class="div-row" data-div="${d.id}" type="button">
+  const rows = list.map(d => {
+    const inner = `
       <span class="cat">${esc(d.cat)}</span>
       <span class="div-row-name">${esc(shortDiv(d.name))}</span>
-      <span class="div-row-meta">${d.entrants}名${d.tourSize ? ` ／ ${d.tourSize}枠` : ""}</span>
-    </button>`).join("");
+      <span class="div-row-meta">${d.entrants}名</span>`;
+    // トーナメント表がある階級はそのまま公式ページへのリンク、なければ非活性表示
+    return d.tourId
+      ? `<a class="div-row" href="${BASE}/tournament-public/${d.tourId}" target="_blank" rel="noopener">${inner}</a>`
+      : `<div class="div-row div-row-disabled">${inner}<span class="div-row-note">準備中</span></div>`;
+  }).join("");
   return `<div class="club-sum">${filtered ? `該当 <span class="n">${list.length}</span> 階級` : `全 <span class="n">${list.length}</span> 階級（進行プログラム順）`}</div>
     <div class="divlist">${rows}</div>`;
 }
@@ -712,33 +707,6 @@ function tourListHTML(list, filtered){
 function bindTourEvents(){
   document.querySelectorAll(".subtab").forEach(b =>
     b.onclick = () => { state.tourCat = b.dataset.cat; render(); });
-  document.querySelectorAll(".div-row").forEach(b =>
-    b.onclick = () => { state.tourSelectedDiv = +b.dataset.div; render(); });
-}
-
-function renderTourDetail(divId){
-  const out = $("#out");
-  const d = state.divisions.find(x => x.id === divId);
-  if (!d){ state.tourSelectedDiv = null; render(); return; }
-  const cta = d.tourId
-    ? `<a class="tour-btn" href="${BASE}/tournament-public/${d.tourId}" target="_blank" rel="noopener">
-         トーナメント表を見る ↗
-       </a>`
-    : `<p class="tour-empty-note">この階級のトーナメント表はまだ準備中です</p>`;
-  out.innerHTML = `
-    <div>
-      <button class="back-btn" id="tourBack" type="button">← 階級一覧に戻る</button>
-      <div class="b-div"><span class="cat">${esc(d.cat)}</span><span>${esc(shortDiv(d.name))}</span></div>
-    </div>
-    <div class="tour-card">
-      <div class="tour-card-meta">
-        <span>参加 <span class="n">${d.entrants}</span> 名</span>
-        ${d.tourSize ? `<span>／ トーナメント枠 <span class="n">${d.tourSize}</span></span>` : ""}
-      </div>
-      ${cta}
-    </div>`;
-  const back = $("#tourBack");
-  if (back) back.onclick = () => { state.tourSelectedDiv = null; render(); };
 }
 
 function renderHint(){
@@ -868,20 +836,17 @@ function setMode(m){
   $("#q").placeholder = PLACEHOLDERS[m];
   state.q = "";
   $("#q").value = "";
-  state.tourSelectedDiv = null;
   render();
 }
 
 let deb;
 $("#q").addEventListener("input", e => {
   state.q = e.target.value;
-  if (state.mode === "tour") state.tourSelectedDiv = null;
   clearTimeout(deb);
   deb = setTimeout(render, 120);
 });
 $("#clear").onclick = () => {
   state.q = ""; $("#q").value = "";
-  if (state.mode === "tour") state.tourSelectedDiv = null;
   render(); $("#q").focus();
 };
 $("#refresh").onclick = refreshMatches;
