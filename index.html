@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- build:2026-09-13-1 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -155,6 +156,12 @@
     background:var(--card);border:1px solid var(--line-strong);border-radius:8px;padding:4px 10px;cursor:pointer}
   @media (prefers-reduced-motion:reduce){.status-line .pulse{animation:none}}
 
+  .update-banner{position:fixed;top:0;left:0;right:0;z-index:50;background:var(--ink);color:#fff;
+    display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 16px;font-size:12.5px;
+    font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.25);text-align:center}
+  .update-banner button{flex:none;font-family:var(--jp);font-size:12px;font-weight:700;color:var(--ink);
+    background:#fff;border:0;border-radius:999px;padding:5px 14px;cursor:pointer}
+
   /* ---- results ---- */
   #out{display:flex;flex-direction:column;gap:18px;margin-top:12px}
 
@@ -228,6 +235,11 @@
 </head>
 <body>
 
+<div class="update-banner" id="updateBanner" hidden>
+  <span>新しいバージョンがあります</span>
+  <button id="updateBtn" type="button">今すぐ更新</button>
+</div>
+
 <div class="wrap">
   <header class="mast">
     <p class="kicker">出場試合ファインダー</p>
@@ -268,6 +280,7 @@
 <script>
 const COMP_ID = 50;
 const BASE = "https://karate-network.com";
+const BUILD_ID = "2026-09-13-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -810,8 +823,25 @@ function renderSkeleton(){
 function updateStatus(){
   const t = state.lastMatchLoad ? fmtTime(state.lastMatchLoad) : "―";
   $("#statusText").textContent = `コート進行 最終更新 ${t} ・ 30秒ごとに自動更新`;
-  $("#dataStamp").textContent = `データ取得: ${state.lastMatchLoad ? state.lastMatchLoad.toLocaleString("ja-JP") : "―"} / 大会ID ${COMP_ID}`;
+  $("#dataStamp").textContent = `データ取得: ${state.lastMatchLoad ? state.lastMatchLoad.toLocaleString("ja-JP") : "―"} / 大会ID ${COMP_ID} / build ${BUILD_ID}`;
 }
+
+/* ---------- new-version check (このページ自体をキャッシュ抜きで取得して比較) ---------- */
+let updateAvailable = false;
+async function checkForUpdate(){
+  if (updateAvailable) return;
+  try{
+    const url = location.pathname.replace(/\?.*$/, "") + "?_v=" + Date.now();
+    const html = await fetch(url, { cache: "no-store" }).then(r => r.ok ? r.text() : null);
+    if (!html) return;
+    const m = html.match(/<!--\s*build:([^\s]+?)\s*-->/);
+    if (m && m[1] && m[1] !== BUILD_ID){
+      updateAvailable = true;
+      $("#updateBanner").hidden = false;
+    }
+  }catch(e){ /* オフライン等は無視 */ }
+}
+
 function setQuery(v){
   $("#q").value = v;
   state.q = v;
@@ -858,13 +888,20 @@ $("#refresh").onclick = refreshMatches;
 $("#mNameBtn").onclick = () => setMode("name");
 $("#mClubBtn").onclick = () => setMode("club");
 $("#mTourBtn").onclick = () => setMode("tour");
+$("#updateBtn").onclick = () => {
+  location.replace(location.pathname.replace(/\?.*$/, "") + "?_v=" + Date.now());
+};
 renderHint();
 
 loadAll();
 setInterval(() => { if (!document.hidden) refreshMatches(); }, 30000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && state.lastMatchLoad && Date.now() - state.lastMatchLoad > 30000) refreshMatches();
+  if (document.hidden) return;
+  if (state.lastMatchLoad && Date.now() - state.lastMatchLoad > 30000) refreshMatches();
+  checkForUpdate();  // ホーム画面アイコンから復帰した時など、開き直すたびに新版が出ていないか確認
 });
+setTimeout(checkForUpdate, 15000);
+setInterval(checkForUpdate, 5 * 60 * 1000);
 </script>
 </body>
 </html>
