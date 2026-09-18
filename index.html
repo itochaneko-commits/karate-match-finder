@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- build:2026-09-13-3 -->
+<!-- build:2026-09-18-1 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -243,9 +243,9 @@
 
   <div class="search">
     <div class="modes" role="tablist">
-      <button id="mNameBtn" class="mode-btn on" type="button" role="tab" aria-selected="true">選手名</button>
-      <button id="mClubBtn" class="mode-btn" type="button" role="tab" aria-selected="false">所属</button>
       <button id="mTourBtn" class="mode-btn" type="button" role="tab" aria-selected="false">階級・型/組手</button>
+      <button id="mClubBtn" class="mode-btn" type="button" role="tab" aria-selected="false">所属</button>
+      <button id="mNameBtn" class="mode-btn on" type="button" role="tab" aria-selected="true">選手名</button>
     </div>
     <label class="field">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
@@ -274,7 +274,7 @@
 <script>
 const COMP_ID = 50;
 const BASE = "https://karate-network.com";
-const BUILD_ID = "2026-09-13-3";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
+const BUILD_ID = "2026-09-18-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -300,6 +300,20 @@ const norm = s => (s || "").normalize("NFKC").replace(/[\s　・·,、。･]/g,
 const nameKey = s => norm(s);
 const kanaKey = s => kata2hira(norm(s));
 const esc = s => (s == null ? "" : String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c])));
+
+// 所属検索: 表記が違うだけで実質同じ拠点として扱うグループ（データ入力のばらつき対策）。
+// 例: 「総本部埼大道場」で検索しても「総本部」の選手も一緒に出てくるようにする。
+// クエリがグループ内どのメンバー名の一部にでもマッチしたら、そのグループ全員を検索対象に含める。
+const CLUB_ALIAS_GROUPS = [
+  ["総本部", "総本部埼大道場"],
+].map(group => group.map(norm));
+function clubAliasTargets(nq){
+  const set = new Set();
+  for (const group of CLUB_ALIAS_GROUPS){
+    if (group.some(label => label.includes(nq))) group.forEach(label => set.add(label));
+  }
+  return set;
+}
 
 function shortDiv(name){
   return (name || "").replace(/^（(組手|型)）\s*/, "").replace(/^【[^】]*】/, "").trim();
@@ -517,8 +531,12 @@ function earliestCoord(rowOrGroup){
 function searchClub(q){
   const nq = norm(q);
   if (!nq) return [];
-  // 支部・道場（.clk）と流派・団体（.ok）の両方を対象にする
-  const hits = state.entries.filter(r => (r.clk && r.clk.includes(nq)) || (r.ok && r.ok.includes(nq)));
+  // 支部・道場（.clk）と流派・団体（.ok）の両方を対象にする。別名グループに該当する場合は
+  // グループ全員（表記が違う実質同じ拠点）も検索対象に加える。
+  const aliasTargets = clubAliasTargets(nq);
+  const hits = state.entries.filter(r =>
+    (r.clk && r.clk.includes(nq)) || (r.ok && r.ok.includes(nq)) ||
+    aliasTargets.has(r.clk) || aliasTargets.has(r.ok));
   const groups = new Map();
   for (const r of hits){
     const key = r.pid ? "p" + r.pid : "n:" + r.nk + "|" + r.ok;
