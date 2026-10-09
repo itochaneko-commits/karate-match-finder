@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- build:2026-10-09-1 -->
+<!-- build:2026-10-09-2 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -276,9 +276,10 @@
 </div>
 
 <script>
-const COMP_ID = 50;
+// URLに ?comp=55 のように付けると別の大会（例: 全日本）を表示できる。省略時は従来通り大会50。
+const COMP_ID = Number(new URLSearchParams(location.search).get("comp")) || 50;
 const BASE = "https://karate-network.com";
-const BUILD_ID = "2026-10-09-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
+const BUILD_ID = "2026-10-09-2";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -843,12 +844,17 @@ function updateStatus(){
 }
 
 /* ---------- new-version check (このページ自体をキャッシュ抜きで取得して比較) ---------- */
+// ?comp=55 のような既存のクエリは消さず、キャッシュ回避用の _v だけ付け替える。
+function cacheBustURL(){
+  const params = new URLSearchParams(location.search);
+  params.set("_v", Date.now());
+  return location.pathname + "?" + params.toString();
+}
 let updateAvailable = false;
 async function checkForUpdate(){
   if (updateAvailable) return;
   try{
-    const url = location.pathname.replace(/\?.*$/, "") + "?_v=" + Date.now();
-    const html = await fetch(url, { cache: "no-store" }).then(r => r.ok ? r.text() : null);
+    const html = await fetch(cacheBustURL(), { cache: "no-store" }).then(r => r.ok ? r.text() : null);
     if (!html) return;
     const m = html.match(/<!--\s*build:([^\s]+?)\s*-->/);
     if (m && m[1] && m[1] !== BUILD_ID){
@@ -902,7 +908,7 @@ $("#mNameBtn").onclick = () => setMode("name");
 $("#mClubBtn").onclick = () => setMode("club");
 $("#mTourBtn").onclick = () => setMode("tour");
 $("#updateBtn").onclick = () => {
-  location.replace(location.pathname.replace(/\?.*$/, "") + "?_v=" + Date.now());
+  location.replace(cacheBustURL());
 };
 renderHint();
 
