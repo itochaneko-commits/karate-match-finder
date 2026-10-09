@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- build:2026-09-18-1 -->
+<!-- build:2026-10-09-1 -->
 <title>出場試合ファインダー</title>
 <meta name="description" content="第30回全関東空手道選手権大会 — 名前で出場試合・コート・対戦相手を検索">
 <meta name="theme-color" content="#c20e2f" media="(prefers-color-scheme: light)">
@@ -167,8 +167,11 @@
   .p-meta{margin:5px 0 0;font-size:12px;color:var(--muted)}
   .p-meta .sep{margin:0 6px;opacity:.5}
 
-  .bout{padding:14px 16px;display:grid;grid-template-columns:1fr;gap:11px}
-  .bout + .bout{border-top:1px dashed var(--line-strong)}
+  .entry-group{padding:14px 16px}
+  .entry-group + .entry-group{border-top:1px dashed var(--line-strong)}
+  .entry-group .b-div{margin-bottom:11px}
+  .bout{display:grid;grid-template-columns:1fr;gap:11px}
+  .bout + .bout{border-top:1px dashed var(--line);margin-top:11px;padding-top:11px}
   .b-div{font-size:12.5px;color:var(--muted);display:flex;gap:7px;align-items:flex-start;line-height:1.4}
   .cat{flex:none;font-weight:700;color:var(--ink);background:var(--paper);border:1px solid var(--line-strong);
     border-radius:6px;padding:1px 7px;font-size:11px;letter-spacing:.04em}
@@ -199,9 +202,10 @@
   .chip.win{background:var(--good-wash);color:var(--good)}
   .chip.lose{background:var(--warn-wash);color:var(--warn)}
   .chip.done{background:var(--paper);color:var(--muted);border:1px solid var(--line-strong)}
-  .b-foot a{margin-left:auto;font-size:12px;color:var(--accent-ink);text-decoration:none;font-weight:700;
+  .entry-link{margin:11px 0 0;text-align:right}
+  .entry-link a{font-size:12px;color:var(--accent-ink);text-decoration:none;font-weight:700;
     border-bottom:1px solid color-mix(in srgb,var(--accent-ink) 35%,transparent);padding-bottom:1px}
-  .b-foot a:hover{border-bottom-color:var(--accent-ink)}
+  .entry-link a:hover{border-bottom-color:var(--accent-ink)}
 
   .grp-note{font-size:11px;color:var(--muted);margin-top:-2px}
   .grp-note b{color:var(--ink);font-weight:500}
@@ -274,7 +278,7 @@
 <script>
 const COMP_ID = 50;
 const BASE = "https://karate-network.com";
-const BUILD_ID = "2026-09-18-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
+const BUILD_ID = "2026-10-09-1";  // bump this (and the <!-- build: --> comment in <head>) on every deploy
 const $ = s => document.querySelector(s);
 
 const state = {
@@ -560,26 +564,42 @@ function roundLabel(n){
   return n + "回戦";
 }
 
-function boutHTML(r){
-  const ms = state.matchesByEntry.get(r.id) || [];
-  // choose the player's "current/next" match: prefer one without a winner, else earliest node
-  let m = ms.find(x => x.winner == null) || ms[0];
+// エントリー（1階級分）の既知の試合を「全部」表示する。1回戦だけ・最新だけに絞らない。
+// karate-network 側が次の回戦の組み合わせをまだ作っていない間は、そのぶんは単純に現れない
+// （先読みはできない）が、データが揃い次第、次の更新で自動的に行が増える。
+function entryGroupHTML(r){
   const tourId = r.tourId;
   const bracketA = tourId
-    ? `<a href="${BASE}/tournament-public/${tourId}" target="_blank" rel="noopener">トーナメント表 ↗</a>` : "";
-
+    ? `<p class="entry-link"><a href="${BASE}/tournament-public/${tourId}" target="_blank" rel="noopener">トーナメント表 ↗</a></p>` : "";
   const catBadge = `<span class="cat">${esc(r.cat)}</span>`;
   const divLine = `<div class="b-div">${catBadge}<span>${esc(shortDiv(r.divName) || r.divName || "階級情報なし")}</span></div>`;
 
-  if (!m){
-    return `<div class="bout" data-eid="${r.id}" data-did="${r.divId ?? ""}">
+  const ms = (state.matchesByEntry.get(r.id) || []).slice();
+  if (!ms.length){
+    return `<div class="entry-group">
       ${divLine}
       <div class="vs"><span class="opp tbd">試合の割り当てがまだありません</span></div>
-      <div class="b-foot">${bracketA}</div>
+      ${bracketA}
     </div>`;
   }
 
-  // opponent
+  // 同時に「未確定（＝今向かっている試合）」になり得るのは最大1件のはず。
+  // それを一番下＝直近に表示し、確定済み（＝終わった試合）は matchId 昇順で古い順に並べる。
+  ms.sort((a, b) => {
+    const aOpen = a.winner == null, bOpen = b.winner == null;
+    if (aOpen !== bOpen) return aOpen ? 1 : -1;
+    return a.matchId - b.matchId;
+  });
+
+  const rows = ms.map(m => matchRowHTML(r, m)).join("");
+  return `<div class="entry-group">
+    ${divLine}
+    ${rows}
+    ${bracketA}
+  </div>`;
+}
+
+function matchRowHTML(r, m){
   const oppId = m.e1 === r.id ? m.e2 : m.e1;
   let oppHTML;
   if (oppId == null){
@@ -589,7 +609,6 @@ function boutHTML(r){
     oppHTML = `<span class="opp">${esc(o.name || "―")}${o.org ? `<span class="team">${esc(o.org)}</span>` : ""}</span>`;
   }
 
-  // status / result
   let chip = `<span class="chip sched" data-role="chip">試合予定</span>`;
   if (m.winner != null){
     chip = m.winner === r.id
@@ -598,7 +617,6 @@ function boutHTML(r){
   }
 
   return `<div class="bout" data-eid="${r.id}" data-did="${r.divId ?? ""}" data-court="${esc(m.court)}" data-disp="${esc(m.disp)}">
-    ${divLine}
     <div class="coord">
       <span class="box"><span class="lab">コート</span><span class="val">${esc(m.court)}</span></span>
       <span class="box num"><span class="lab">何試合目</span><span class="val">${esc(m.disp)}</span></span>
@@ -610,7 +628,7 @@ function boutHTML(r){
       ${oppHTML}
     </div>
     <p class="grp-note"><b>${esc(m.court)}</b> コートの <b>${esc(m.disp)}</b> 試合目（第 <b>${esc(m.group)}</b> 進行グループ）<span data-role="mine"></span></p>
-    <div class="b-foot">${chip}${bracketA}</div>
+    <div class="b-foot">${chip}</div>
   </div>`;
 }
 
@@ -630,7 +648,7 @@ function personHTML(group){
     .slice()
     .sort((a, b) => earliestCoord(a) - earliestCoord(b)
       || (a.cat).localeCompare(b.cat) || (a.divName || "").localeCompare(b.divName || "", "ja"))
-    .map(boutHTML).join("");
+    .map(entryGroupHTML).join("");
   return `<article class="person">
     <div class="p-head">
       <h2 class="p-name">${esc(head.name)} ${kana}</h2>
